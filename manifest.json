@@ -4,8 +4,8 @@
     "manifestVersion": "1.17",
     "version": "1.0.0",
     "name": {
-      "short": "Contoso Task Pane Add-in",
-      "full": "Contoso Task Pane Add-in"
+      "short": "AI WORD ADD-IN",
+    "full": "AI WORD ADD-IN"
     },
     "description": {
       "short": "A template to get started.",
