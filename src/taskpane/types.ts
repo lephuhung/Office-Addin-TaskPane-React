@@ -18,6 +18,7 @@ export interface MCPAction {
 export interface Settings {
   apiBaseUrl: string;
   apiKey: string;
+  modelsUrl?: string;
   model?: string;
   systemPrompt?: string;
   allowEdit?: boolean;

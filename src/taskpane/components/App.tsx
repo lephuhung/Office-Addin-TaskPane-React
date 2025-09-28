@@ -74,8 +74,9 @@ const listItems: HeroListItem[] = [
 
 function useSettings() {
   const [settings, setSettings] = React.useState<Settings>({
-    apiBaseUrl: "",
+    apiBaseUrl: "http://10.8.0.8:8000",
     apiKey: "",
+    modelsUrl: "http://10.8.0.8:8000/v1/models",
     model: "gpt-4o-mini",
     systemPrompt: "You are a helpful assistant for Word authoring.",
     allowEdit: true,
@@ -163,14 +164,14 @@ export default function App({ title }: AppProps) {
   }, [settings.systemPrompt]);
 
   const checkConnection = React.useCallback(async () => {
-    if (!settings.apiBaseUrl) {
+    const modelsUrl = settings.modelsUrl || `${settings.apiBaseUrl?.replace(/\/$/, "")}/v1/models`;
+    if (!modelsUrl) {
       setConn("error");
-      setConnMsg("Thiếu API Base URL");
+      setConnMsg("Thiếu Models URL hoặc API Base URL");
       return;
     }
-    const base = settings.apiBaseUrl.replace(/\/$/, "");
     try {
-      let res = await fetch(`${base}/v1/models`, {
+      let res = await fetch(modelsUrl, {
         headers: settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : undefined,
       });
       if (res.ok) {
@@ -184,19 +185,25 @@ export default function App({ title }: AppProps) {
         setConn("ok");
         setConnMsg(null);
       } else {
-        // fallback thử /health nếu /v1/models không khả dụng
-        try {
-          const healthRes = await fetch(`${base}/health`, {
-            headers: settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : undefined,
-          });
-          if (healthRes.ok) {
-            setConn("ok");
-            setConnMsg(null);
-          } else {
+        // fallback thử /health nếu models URL không khả dụng
+        const baseUrl = settings.apiBaseUrl?.replace(/\/$/, "");
+        if (baseUrl) {
+          try {
+            const healthRes = await fetch(`${baseUrl}/health`, {
+              headers: settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : undefined,
+            });
+            if (healthRes.ok) {
+              setConn("ok");
+              setConnMsg(null);
+            } else {
+              setConn("error");
+              setConnMsg(`HTTP ${res.status}`);
+            }
+          } catch {
             setConn("error");
             setConnMsg(`HTTP ${res.status}`);
           }
-        } catch {
+        } else {
           setConn("error");
           setConnMsg(`HTTP ${res.status}`);
         }
@@ -205,17 +212,18 @@ export default function App({ title }: AppProps) {
       setConn("error");
       setConnMsg(e?.message || String(e));
     }
-  }, [settings.apiBaseUrl, settings.apiKey]);
+  }, [settings.apiBaseUrl, settings.modelsUrl, settings.apiKey]);
 
   React.useEffect(() => {
     // Attempt auto-check when URL or key changes
-    if (settings.apiBaseUrl) {
+    const modelsUrl = settings.modelsUrl || settings.apiBaseUrl;
+    if (modelsUrl) {
       checkConnection();
     } else {
       setConn("unknown");
       setConnMsg(null);
     }
-  }, [settings.apiBaseUrl, settings.apiKey, checkConnection]);
+  }, [settings.apiBaseUrl, settings.modelsUrl, settings.apiKey, checkConnection]);
 
   const send = async () => {
     if (!input.trim()) return;
@@ -378,6 +386,9 @@ function SettingsPanel({ value, onChange, logs, onClearLogs, connectionStatus, c
       </div>
       <Field label="API Base URL">
         <Input value={form.apiBaseUrl} onChange={(_, d) => update({ apiBaseUrl: d.value })} placeholder="https://your-server" />
+      </Field>
+      <Field label="Models URL">
+        <Input value={form.modelsUrl || ""} onChange={(_, d) => update({ modelsUrl: d.value })} placeholder="https://your-server/v1/models" />
       </Field>
       <Field label="API Key">
         <Input type="password" value={form.apiKey} onChange={(_, d) => update({ apiKey: d.value })} placeholder="sk-..." />

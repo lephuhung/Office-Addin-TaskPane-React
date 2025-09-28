@@ -9,8 +9,11 @@ import {
   makeStyles,
   tokens,
   Textarea,
+  Spinner,
 } from "@fluentui/react-components";
 import { Send24Regular, Bot24Regular, Person24Regular } from "@fluentui/react-icons";
+import { Settings } from "../types";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   id: string;
@@ -46,22 +49,51 @@ const useStyles = makeStyles({
     maxWidth: "75%",
     wordWrap: "break-word",
     marginBottom: "8px",
+    // Override Fluent UI Card defaults
+    "& .fui-Card": {
+      backgroundColor: "inherit !important",
+      border: "inherit !important",
+    }
   },
   userMessage: {
-    alignSelf: "flex-end",
-    backgroundColor: "#0078d4", // Blue background for user
-    color: "#ffffff", // White text for contrast
-    borderRadius: "18px 18px 4px 18px",
-    marginLeft: "20%",
-    border: "none",
+    alignSelf: "flex-start", // Align to left side
+    backgroundColor: "#0078d4 !important", // Blue background for user
+    color: "#ffffff !important", // White text for contrast
+    borderRadius: "18px 18px 18px 4px !important", // Rounded corners for left side
+    marginRight: "20%", // Space on right side
+    border: "none !important",
+    // Override nested components
+    "& .fui-CardHeader": {
+      backgroundColor: "transparent !important",
+      color: "#ffffff !important",
+    },
+    "& .fui-CardPreview": {
+      backgroundColor: "transparent !important",
+      color: "#ffffff !important",
+    },
+    "& .fui-Text": {
+      color: "#ffffff !important",
+    }
   },
   botMessage: {
-    alignSelf: "flex-start",
-    backgroundColor: "#f3f2f1", // Light gray for bot
-    color: "#323130", // Dark text for contrast
-    borderRadius: "18px 18px 18px 4px",
-    marginRight: "20%",
-    border: `1px solid #e1dfdd`,
+    alignSelf: "flex-end", // Align to right side
+    backgroundColor: "#ffffff !important", // White background for better contrast
+    color: "#000000 !important", // Black text for maximum contrast
+    borderRadius: "18px 18px 4px 18px !important", // Rounded corners for right side
+    marginLeft: "20%", // Space on left side
+    border: `1px solid #d1d1d1 !important`, // Darker border for definition
+    // Override nested components
+    "& .fui-CardHeader": {
+      backgroundColor: "transparent !important",
+      color: "#000000 !important",
+    },
+    "& .fui-CardPreview": {
+      backgroundColor: "transparent !important",
+      color: "#000000 !important",
+    },
+    "& .fui-Text": {
+      color: "#000000 !important",
+    }
   },
   inputArea: {
     padding: "16px",
@@ -95,11 +127,41 @@ const useStyles = makeStyles({
   },
   userMessageContent: {
     padding: "12px 16px",
-    color: "#ffffff", // Ensure white text for user messages
+    color: "#ffffff !important", // Ensure white text for user messages
+    "& *": {
+      color: "#ffffff !important",
+    }
   },
   botMessageContent: {
     padding: "12px 16px",
-    color: "#323130", // Ensure dark text for bot messages
+    color: "#000000 !important", // Black text for maximum contrast
+    "& *": {
+      color: "#000000 !important",
+    },
+    "& p": {
+      color: "#000000 !important",
+      margin: "0 0 8px 0",
+    },
+    "& ul, & ol": {
+      color: "#000000 !important",
+      paddingLeft: "20px",
+    },
+    "& li": {
+      color: "#000000 !important",
+    },
+    "& code": {
+      backgroundColor: "#f5f5f5 !important",
+      color: "#000000 !important",
+      padding: "2px 4px",
+      borderRadius: "3px",
+    },
+    "& pre": {
+      backgroundColor: "#f5f5f5 !important",
+      color: "#000000 !important",
+      padding: "8px",
+      borderRadius: "4px",
+      overflow: "auto",
+    }
   },
   emptyState: {
     display: "flex",
@@ -116,38 +178,135 @@ export const Chat: React.FC = () => {
   const styles = useStyles();
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [inputValue, setInputValue] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [settings, setSettings] = React.useState<Settings>({
+    apiBaseUrl: "http://10.8.0.8:8000",
+    apiKey: "",
+    model: "gpt-4o-mini",
+  });
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  // Debug log for initial state
+  React.useEffect(() => {
+    console.log("Chat: Component mounted, initial messages state:", messages);
+  }, []);
+
+  // Load settings from storage
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const stored = await (OfficeRuntime as any).storage?.getItem("settings");
+        if (stored) {
+          const parsedSettings = JSON.parse(stored);
+          console.log("Chat: Loaded settings from OfficeRuntime storage:", parsedSettings);
+          setSettings(parsedSettings);
+        } else {
+          console.log("Chat: No settings found in OfficeRuntime storage");
+        }
+      } catch (e) {
+        console.log("Chat: OfficeRuntime storage failed, trying localStorage:", e);
+        const raw = localStorage.getItem("settings");
+        if (raw) {
+          const parsedSettings = JSON.parse(raw);
+          console.log("Chat: Loaded settings from localStorage:", parsedSettings);
+          setSettings(parsedSettings);
+        } else {
+          console.log("Chat: No settings found in localStorage either");
+        }
+      }
+    })();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   React.useEffect(() => {
+    console.log("Chat: Messages state changed:", messages);
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (inputValue.trim()) {
-      const newMessage: Message = {
+  const handleSendMessage = async () => {
+    if (!inputValue.trim()) return;
+    
+    console.log("Chat: Current settings when sending message:", settings);
+    
+    if (!settings.apiBaseUrl || !settings.apiKey) {
+      const errorMessage: Message = {
         id: Date.now().toString(),
-        text: inputValue.trim(),
-        sender: "user",
+        text: "Vui lòng cấu hình API Base URL và API Key trong tab Settings trước khi chat.",
+        sender: "bot",
         timestamp: new Date(),
       };
+      setMessages(prev => {
+        console.log("Chat: Adding error message, prev messages:", prev);
+        return Array.isArray(prev) ? [...prev, errorMessage] : [errorMessage];
+      });
+      return;
+    }
 
-      setMessages(prev => [...prev, newMessage]);
-      setInputValue("");
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      text: inputValue.trim(),
+      sender: "user",
+      timestamp: new Date(),
+    };
 
-      // Simulate bot response
-      setTimeout(() => {
-        const botResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          text: "Tôi đã nhận được tin nhắn của bạn. Đây là phản hồi tự động từ AI Assistant.",
-          sender: "bot",
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, botResponse]);
-      }, 1000);
+    setMessages(prev => {
+      console.log("Chat: Adding user message, prev messages:", prev);
+      return Array.isArray(prev) ? [...prev, newMessage] : [newMessage];
+    });
+    setInputValue("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${settings.apiBaseUrl.replace(/\/$/, "")}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${settings.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: settings.model || "gpt-4o-mini",
+          messages: [
+            { role: "system", content: "You are a helpful AI assistant for Word documents. Respond in Vietnamese." },
+            { role: "user", content: inputValue.trim() }
+          ],
+          stream: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const assistantText = data?.choices?.[0]?.message?.content ?? "Xin lỗi, tôi không thể tạo phản hồi.";
+
+      const botResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        text: assistantText,
+        sender: "bot",
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => {
+        console.log("Chat: Adding bot response, prev messages:", prev);
+        return Array.isArray(prev) ? [...prev, botResponse] : [botResponse];
+      });
+    } catch (error: any) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: `Lỗi kết nối API: ${error.message}. Vui lòng kiểm tra cấu hình API trong tab Settings.`,
+        sender: "bot",
+        timestamp: new Date(),
+      };
+      setMessages(prev => {
+        console.log("Chat: Adding error message, prev messages:", prev);
+        return Array.isArray(prev) ? [...prev, errorMessage] : [errorMessage];
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -215,12 +374,18 @@ export const Chat: React.FC = () => {
                 }
               />
               <CardPreview>
-                <div className={message.sender === "user" ? styles.userMessageContent : styles.botMessageContent}>
-                  <Text size={300} style={{ color: message.sender === "user" ? tokens.colorNeutralForegroundOnBrand : tokens.colorNeutralForeground1 }}>
-                    {message.text}
-                  </Text>
-                </div>
-              </CardPreview>
+                 <div className={message.sender === "user" ? styles.userMessageContent : styles.botMessageContent}>
+                   {message.sender === "user" ? (
+                     <Text size={300}>
+                       {message.text}
+                     </Text>
+                   ) : (
+                     <div>
+                       <ReactMarkdown>{message.text}</ReactMarkdown>
+                     </div>
+                   )}
+                 </div>
+               </CardPreview>
             </Card>
           ))
         )}
